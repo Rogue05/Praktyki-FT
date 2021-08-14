@@ -6,24 +6,14 @@ Created on Thu Aug  5 21:18:51 2021
 """
 import os
 import re
-# import warnings
-
-# from matplotlib.cbook.deprecation import MatplotlibDeprecationWarning
-# # warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 
 import numpy as np
 import pandas as pd
-# import matplotlib.pyplot as plt
 
 from scipy.optimize import curve_fit
 
-from numba import jit, njit
-
 def process_name(filename):
-    # date = filename[:10]
-    # print('filename')
     filename = os.path.split(filename)[-1]
-    # print(filename)
     date, sample_nr, power = re.split('Concentration|Power|Sample',filename[:-4])
     return date, sample_nr, power
 
@@ -90,48 +80,29 @@ class ExpS_rise:
 
 class ExpSpec:
     def __init__(self, taumin, taumax, N):
-    # def __init__(self, t, N):
-        # self.tau = np.linspace(taumin,taumax,N)
-        self.tau = np.logspace(taumin,taumax,N)
-        # self.tau = np.logspace(np.log10(t[1]-t[0]),np.log10(t[-1]))
-        # print(np.log10(t[1]-t[0]),np.log10(t[-1]),flush=True)
+        self.tau = np.logspace(np.log10(taumin),np.log10(taumax),N)
 
-    # @njit
     def fun(self, t, *As):
         ret = np.zeros(len(t))
         for i in range(len(As)):
             ret = ret+As[i]*np.exp(-t/self.tau[i])
         return ret
-    # fun = njit(fun_base)
-
 
     def get_p0(self, t,y):
-        # sumA = y[0]
-        # if len(y>100)
         return np.ones(len(self.tau))*np.average(y[:10])/len(self.tau)
 
 def process_data(t,y,t_start,t_end,model):
     di = np.logical_and(t>t_start,t<t_end)
     dt, dy = t[di], y[di]
-    # plt.plot(dt,dy,label='decay')
-    # # plt.legend()
-
-    # print(type(model))
-    # print(model.__name__)
     p0 = model.get_p0(dt, dy)
-    # plt.plot(dt,model.fun(dt-t_start,*p0))
 
-    # popt, pcov = curve_fit(model.fun,dt-t_start,dy,p0)
     popt, pcov = curve_fit(model.fun,dt-t_start,dy,p0,bounds = (0,np.inf))
     stderr = np.sqrt(np.diag(pcov))
     r = dy - model.fun(dt-t_start,*popt)
-    # plt.plot(dt,model.fun(dt-t_start,*popt))
-    # plt.show()
 
     return popt, stderr, r, dt, dy
 
 def eval_model(model, t, p):
-    # print(model,type(t),type(p),p)
     return model.fun(t,*p)
 
 def process_file(filename, t_start, t_end, model):
@@ -143,42 +114,33 @@ def process_file(filename, t_start, t_end, model):
                            skiprows=15)
     except pd.errors.EmptyDataError:
         print('ERROR invalid file',filename)
-        # continue
         return
     except FileNotFoundError:
         print('ERROR missing file',filename)
-        # continue
         return
 
     t,y = np.array(data[0]),np.array(data[1])
-    # return process_data(t,y,0.025,0.030,Exp2)
-    # return process_data(t,y,0.019,0.025,ExpS_rise)
     return process_data(t, y, t_start, t_end, model)
 
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     dirpath = 'respotkanieponiedziaek'
+    model = ExpSpec(1e-4,1e1,51)
 
     for filename in os.listdir(dirpath):
         print('=====',filename,process_name(filename))
         date, sample_nr, power = process_name(filename)
-        # ret = process_file(os.path.join(dirpath,filename), 0.019,0.025,ExpS_rise)
         ret = process_file(os.path.join(dirpath,filename),
                            0.025,0.030,
-                            # ExpSpec(1e-7,1e-2,50))
-                            ExpSpec(-4,-3,51))
-                            # ExpSpec(t,50))
-                            # Exp2)
+                           model)
         if ret is None: continue
         popt, stderr, r, t, y = ret
         print(stderr)
         plt.show()
-        # plt.title(filename)
+        plt.suptitle(filename)
         plt.subplot(211)
-        plt.semilogx(np.logspace(-5,-3,51),popt/popt.sum())
+        plt.semilogx(model.tau,popt/popt.sum())
         plt.subplot(212)
         plt.plot(t, np.abs(r/y),'.',ms=1)
-        # plt.show()
-        if filename == '28.06.2021Sample208PowerHigh.txt':
-            break
+
